@@ -1,4 +1,3 @@
-import type { Content, TDocumentDefinitions } from "pdfmake/interfaces";
 import type { SchemaSnapshot, DocTable } from "@/docs/types";
 import type { Locale } from "@/i18n";
 import { createExportTranslate } from "@/docs-export/exportTranslate";
@@ -10,6 +9,22 @@ import chineseFontUrl from "@/assets/fonts/NotoSansSC-Regular.otf?url";
 import koreanFontUrl from "@/assets/fonts/NotoSansKR-Regular.otf?url";
 
 export const MYSQL_DICTIONARY_LOCALES = LOCALE_OPTIONS.map((option) => option.value);
+
+type PdfContent = Record<string, unknown>;
+
+interface PdfDocumentDefinition {
+  pageSize: "A4";
+  pageMargins: [number, number, number, number];
+  info: { title: string; subject: string };
+  defaultStyle: PdfContent;
+  styles: Record<string, PdfContent>;
+  content: PdfContent[];
+  footer: (page: number, count: number) => PdfContent;
+}
+
+interface PdfMakeBrowser {
+  createPdf(definition: PdfDocumentDefinition, tableLayouts: undefined, fonts: Record<string, Record<string, string>>, vfs: Record<string, string>): { getBuffer(callback: (buffer: Uint8Array) => void): void };
+}
 
 // Database comments can mix scripts independently of the report language.
 function runs(value: string): { text: string; font: string }[] {
@@ -27,7 +42,7 @@ function text(value: string, style?: string) {
   return { text: runs(value), ...(style ? { style } : {}) };
 }
 
-function grid(headers: string[], rows: string[][], widths: (number | "*")[]): Content {
+function grid(headers: string[], rows: string[][], widths: (number | "*")[]): PdfContent {
   const cell = (value: string) => ({ text: runs(value), margin: [2, 3, 2, 3] as [number, number, number, number] });
   return {
     table: { headerRows: 1, widths, body: [headers.map((header) => ({ ...cell(header), fillColor: "#e9eef2", bold: true })), ...rows.map((row) => row.map(cell))] },
@@ -36,10 +51,10 @@ function grid(headers: string[], rows: string[][], widths: (number | "*")[]): Co
   };
 }
 
-function tableContents(table: DocTable, section: string, label: string, lang: Locale): Content[] {
+function tableContents(table: DocTable, section: string, label: string, lang: Locale): PdfContent[] {
   const l = dictionaryLabels[lang];
   const translate = createExportTranslate(lang);
-  const output: Content[] = [{ ...text(`${section} ${label}: ${table.name}`, "objectTitle"), tocItem: true } as Content];
+  const output: PdfContent[] = [{ ...text(`${section} ${label}: ${table.name}`, "objectTitle"), tocItem: true }];
   if (table.note) output.push(text(table.note, "note"));
   if (table.viewDefinition) {
     output.push(text(translate("docs.definitionHeader"), "heading"));
@@ -76,20 +91,20 @@ function tableContents(table: DocTable, section: string, label: string, lang: Lo
   return output;
 }
 
-export function buildMysqlDictionaryDefinition(snapshot: SchemaSnapshot, lang: Locale = "zh-CN"): TDocumentDefinitions {
+export function buildMysqlDictionaryDefinition(snapshot: SchemaSnapshot, lang: Locale = "zh-CN"): PdfDocumentDefinition {
   if (snapshot.project.databaseType.toLowerCase() !== "mysql") throw new Error("MySQL snapshots only");
   const l = dictionaryLabels[lang];
   const database = snapshot.project.database ?? snapshot.project.name;
   const tables = snapshot.tables.filter((table) => table.kind === "TABLE");
   const views = snapshot.tables.filter((table) => table.kind === "VIEW" || table.kind === "MATERIALIZED_VIEW");
-  const content: Content[] = [
+  const content: PdfContent[] = [
     { ...text(`${database} ${l.title}`, "cover"), margin: [0, 185, 0, 30] },
     { ...text(`${l.generatedAt}: ${snapshot.project.generatedAt}`, "coverDate"), pageBreak: "after" },
     { toc: { title: text(l.contents, "sectionTitle") }, pageBreak: "after" },
     text(l.introduction, "sectionTitle"),
     text(`MySQL · ${database} · ${tables.length} ${l.tables} · ${views.length} ${l.views}`, "note"),
     ...(snapshot.project.note ? [text(snapshot.project.note, "note")] : []),
-    { ...text(`${l.database}: ${database}`, "sectionTitle"), tocItem: true, pageBreak: "before" } as Content,
+    { ...text(`${l.database}: ${database}`, "sectionTitle"), tocItem: true, pageBreak: "before" },
   ];
   if (tables.length) {
     content.push(text(l.tables, "heading"));
@@ -136,7 +151,7 @@ const fontAssets = {
   NotoKR: { file: "NotoSansKR-Regular.otf", url: koreanFontUrl },
 } as const;
 
-function requiredFonts(content: Content[]): (keyof typeof fontAssets)[] {
+function requiredFonts(content: PdfContent[]): (keyof typeof fontAssets)[] {
   const fonts = new Set<keyof typeof fontAssets>(["NotoLatin"]);
   function visit(value: unknown): void {
     if (Array.isArray(value)) {
@@ -156,7 +171,7 @@ export async function renderMysqlDictionaryPdf(snapshot: SchemaSnapshot, lang: L
   const [pdfMake, fontFiles] = await Promise.all([
     import("pdfmake/build/pdfmake"),
     Promise.all(
-      requiredFonts(definition.content as Content[]).map(async (font) => {
+      requiredFonts(definition.content).map(async (font) => {
         const { file, url } = fontAssets[font];
         const response = await fetch(url);
         if (!response.ok) throw new Error(`Font unavailable: ${file}`);
@@ -170,7 +185,7 @@ export async function renderMysqlDictionaryPdf(snapshot: SchemaSnapshot, lang: L
     NotoSC: { normal: fontAssets.NotoSC.file, bold: fontAssets.NotoSC.file, italics: fontAssets.NotoSC.file, bolditalics: fontAssets.NotoSC.file },
     NotoKR: { normal: fontAssets.NotoKR.file, bold: fontAssets.NotoKR.file, italics: fontAssets.NotoKR.file, bolditalics: fontAssets.NotoKR.file },
   };
-  const builder = pdfMake.default ?? pdfMake;
+  const builder = (pdfMake.default ?? pdfMake) as PdfMakeBrowser;
   const data = await new Promise<Uint8Array>((resolve, reject) => {
     try {
       builder.createPdf(definition, undefined, fonts, vfs).getBuffer((buffer) => resolve(new Uint8Array(buffer)));
