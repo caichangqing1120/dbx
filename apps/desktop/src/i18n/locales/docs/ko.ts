@@ -42,6 +42,8 @@ export default {
   themeLight: "라이트",
   themeDark: "다크",
   exportHtml: "HTML 내보내기…",
+  exportPdf: "PDF 내보내기…",
+  exportLanguage: "내보내기 언어",
   exporting: "내보내는 중…",
   exportFailed: "내보낼 수 없습니다: {error}",
   warnings: {

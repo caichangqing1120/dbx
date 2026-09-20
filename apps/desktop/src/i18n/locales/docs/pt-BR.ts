@@ -42,6 +42,8 @@ export default {
   themeLight: "Claro",
   themeDark: "Escuro",
   exportHtml: "Exportar HTML…",
+  exportPdf: "Exportar PDF…",
+  exportLanguage: "Idioma da exportação",
   exporting: "Exportando…",
   exportFailed: "Não foi possível exportar: {error}",
   warnings: {

@@ -42,6 +42,8 @@ export default {
   themeLight: "ライト",
   themeDark: "ダーク",
   exportHtml: "HTMLをエクスポート…",
+  exportPdf: "PDFをエクスポート…",
+  exportLanguage: "エクスポート言語",
   exporting: "エクスポート中…",
   exportFailed: "エクスポートできませんでした: {error}",
   warnings: {

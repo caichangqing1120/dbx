@@ -2,6 +2,10 @@
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Download, Network } from "@lucide/vue";
+import type { Locale } from "@/i18n";
+import { normalizeLocale } from "@/i18n";
+import { LOCALE_OPTIONS } from "@/lib/app/localeOptions";
+import { saveMysqlDictionaryPdf } from "@/lib/export/mysqlDictionaryPdf";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import DocsApp from "@/docs/DocsApp.vue";
@@ -12,10 +16,6 @@ import * as api from "@/lib/backend/api";
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { createAutosave } from "./docsAutosave";
-
-// The languages `to_standalone_html` accepts. Kept in sync manually — this
-// component lives outside `src/docs/` and cannot import from dbx-core.
-const EXPORT_LANGUAGES = ["en", "es", "it", "ja", "ko", "pt-BR", "zh-CN", "zh-TW"];
 
 const props = defineProps<{
   prefillConnectionId?: string;
@@ -77,6 +77,8 @@ const canOpenDiagram = computed(() => (props.prefillConnectionId ?? "") !== "" &
 
 const exporting = ref(false);
 const exportError = ref<string | null>(null);
+const exportLanguage = ref<Locale>(normalizeLocale(locale.value) ?? "en");
+const canExportPdf = computed(() => snapshot.value?.project.databaseType.toLowerCase() === "mysql");
 
 async function load(): Promise<void> {
   const connectionId = props.prefillConnectionId;
@@ -173,14 +175,23 @@ async function exportHtml(): Promise<void> {
       if (!chosen) return; // the user cancelled; not an error
       outputPath = chosen as string;
     }
-    // `to_standalone_html` rejects any language outside its fixed list; the
-    // app's locale is otherwise a superset risk, so fall back rather than
-    // surface that rejection to the user.
-    const lang = EXPORT_LANGUAGES.includes(locale.value) ? locale.value : "en";
-    await api.exportDocsHtml(outputPath, snapshot.value, annotations.value, lang);
+    await api.exportDocsHtml(outputPath, snapshot.value, annotations.value, exportLanguage.value);
   } catch (error) {
     // Never swallowed: a failed export that reports success is the worst
     // outcome here, exactly as with a failed autosave.
+    exportError.value = t("docs.exportFailed", { error: String(error) });
+  } finally {
+    exporting.value = false;
+  }
+}
+
+async function exportPdf(): Promise<void> {
+  if (!snapshot.value || !canExportPdf.value) return;
+  exporting.value = true;
+  exportError.value = null;
+  try {
+    await saveMysqlDictionaryPdf(snapshot.value, exportLanguage.value);
+  } catch (error) {
     exportError.value = t("docs.exportFailed", { error: String(error) });
   } finally {
     exporting.value = false;
@@ -191,6 +202,7 @@ watch(
   open,
   (isOpen, wasOpen) => {
     if (isOpen) {
+      exportLanguage.value = normalizeLocale(locale.value) ?? "en";
       void load();
       return;
     }
@@ -208,7 +220,7 @@ watch(
   <Dialog v-model:open="open">
     <DialogContent class="w-[94vw] max-w-[94vw] sm:max-w-[94vw] md:max-w-[94vw] lg:max-w-[94vw] xl:max-w-[94vw] h-[86vh] max-h-[86vh] gap-0 p-0 overflow-hidden flex flex-col">
       <DialogHeader class="px-4 py-3 border-b pr-12">
-        <DialogTitle class="flex items-center gap-2">
+        <DialogTitle class="flex flex-wrap items-center gap-2">
           <span>{{ t("docs.title") }}</span>
           <span v-if="statusLabel" class="text-xs font-normal" :class="status.state === 'failed' ? 'text-destructive' : 'text-muted-foreground'">
             {{ statusLabel }}
@@ -218,9 +230,19 @@ watch(
             <Network class="w-4 h-4" />
             {{ t("docs.openDiagram") }}
           </Button>
+          <label v-if="snapshot" class="flex items-center gap-2 text-xs font-normal text-muted-foreground" :class="canOpenDiagram ? '' : 'ml-auto'">
+            {{ t("docs.exportLanguage") }}
+            <select v-model="exportLanguage" class="h-8 max-w-32 rounded border border-input bg-background px-2 text-foreground" :disabled="exporting" :aria-label="t('docs.exportLanguage')">
+              <option v-for="option in LOCALE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option>
+            </select>
+          </label>
           <Button v-if="snapshot" variant="outline" size="sm" :disabled="exporting" @click="exportHtml()">
             <Download class="w-4 h-4" />
             {{ exporting ? t("docs.exporting") : t("docs.exportHtml") }}
+          </Button>
+          <Button v-if="canExportPdf" variant="outline" size="sm" :disabled="exporting" @click="exportPdf()">
+            <Download class="w-4 h-4" />
+            {{ exporting ? t("docs.exporting") : t("docs.exportPdf") }}
           </Button>
         </DialogTitle>
       </DialogHeader>

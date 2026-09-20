@@ -3,7 +3,7 @@ import { createExportTranslate, EXPORT_LOCALES } from "../exportTranslate";
 
 describe("createExportTranslate", () => {
   it("carries every locale the app ships", () => {
-    expect(Object.keys(EXPORT_LOCALES).sort()).toEqual(["en", "es", "it", "ja", "ko", "pt-BR", "zh-CN", "zh-TW"]);
+    expect(Object.keys(EXPORT_LOCALES).sort()).toEqual(["en", "az", "es", "it", "ja", "ko", "pt-BR", "tr", "zh-CN", "zh-TW"].sort());
   });
 
   it("resolves a nested key under the docs prefix", () => {

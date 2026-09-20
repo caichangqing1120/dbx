@@ -11,7 +11,7 @@ use crate::docs::snapshot::SchemaSnapshot;
 const EXPORT_JS: &str = include_str!("../../../assets/docs-export.js");
 const EXPORT_CSS: &str = include_str!("../../../assets/docs-export.css");
 
-pub const EXPORT_LANGUAGES: [&str; 8] = ["en", "es", "it", "ja", "ko", "pt-BR", "zh-CN", "zh-TW"];
+pub const EXPORT_LANGUAGES: [&str; 10] = ["en", "az", "es", "it", "ja", "ko", "pt-BR", "tr", "zh-CN", "zh-TW"];
 
 /// Render a snapshot as one self-contained HTML file.
 ///
@@ -168,6 +168,14 @@ mod tests {
         let error = to_standalone_html(&snapshot, &annotations, "kl").expect_err("should reject");
         assert!(error.contains("kl"), "got: {error}");
         assert!(error.contains("en"), "the error must list the valid locales, got: {error}");
+    }
+
+    #[test]
+    fn all_app_languages_are_accepted() {
+        let (snapshot, annotations) = fixture();
+        for lang in EXPORT_LANGUAGES {
+            assert!(to_standalone_html(&snapshot, &annotations, lang).is_ok(), "{lang}");
+        }
     }
 
     /// The committed bundle must match the sources it was built from.

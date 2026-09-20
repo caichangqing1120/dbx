@@ -42,6 +42,8 @@ export default {
   themeLight: "Açık",
   themeDark: "Koyu",
   exportHtml: "HTML olarak dışa aktar…",
+  exportPdf: "PDF olarak dışa aktar…",
+  exportLanguage: "Dışa aktarma dili",
   exporting: "Dışa aktarılıyor…",
   exportFailed: "Dışa aktarılamadı: {error}",
   warnings: {

@@ -42,6 +42,8 @@ export default {
   themeLight: "淺色",
   themeDark: "深色",
   exportHtml: "匯出 HTML…",
+  exportPdf: "匯出 PDF…",
+  exportLanguage: "匯出語言",
   exporting: "匯出中…",
   exportFailed: "無法匯出: {error}",
   warnings: {

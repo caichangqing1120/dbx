@@ -42,6 +42,8 @@ export default {
   themeLight: "Açıq",
   themeDark: "Tünd",
   exportHtml: "HTML-ə ixrac et…",
+  exportPdf: "PDF-ə ixrac et…",
+  exportLanguage: "İxrac dili",
   exporting: "İxrac edilir…",
   exportFailed: "İxrac etmək mümkün olmadı: {error}",
   warnings: {
