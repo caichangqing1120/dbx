@@ -299,7 +299,9 @@ async function goNext(): Promise<void> {
     chooseTemplate(templateId.value);
   }
   if (step.value === 1 && order.value.length === 0) return;
+  const enteringLayout = step.value === 2;
   if (step.value < 4) step.value += 1;
+  if (enteringLayout) await refreshPreview();
 }
 
 async function browse(): Promise<void> {
