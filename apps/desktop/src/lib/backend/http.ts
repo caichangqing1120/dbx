@@ -1352,6 +1352,11 @@ export async function collectDocsSnapshot(connectionId: string, database: string
   return post("/api/docs/snapshot", { connectionId, database, schemas, tables, projectName });
 }
 
+// HTTP snapshot transport is request/response; its progress remains indeterminate.
+export async function collectDocsSnapshotForExport(connectionId: string, database: string, schemas: string[], tables: string[], _onProgress: (progress: import("./tauri").DocsCollectProgress) => void): Promise<SchemaSnapshot> {
+  return post("/api/docs/snapshot", { connectionId, database, schemas, tables, projectName: database, maxConcurrentTables: 2 });
+}
+
 export async function loadDocsAnnotations(connectionId: string): Promise<AnnotationFile | null> {
   return post("/api/docs/annotations/load", { connectionId });
 }

@@ -255,6 +255,7 @@ export const listDialectDataTypes = forward("listDialectDataTypes");
 
 // Docs
 export const collectDocsSnapshot = forward("collectDocsSnapshot");
+export const collectDocsSnapshotForExport = forward("collectDocsSnapshotForExport");
 export const loadDocsAnnotations = forward("loadDocsAnnotations");
 export const applyDocsAnnotations = forward("applyDocsAnnotations");
 export const saveDocsAnnotations = forward("saveDocsAnnotations");
