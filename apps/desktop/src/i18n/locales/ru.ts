@@ -7410,6 +7410,7 @@ export default withEnglishFallback({
     parquetOnlyDuckdb: "Импорт Parquet поддерживается только для подключений DuckDB",
     previewRows: "Строк предпросмотра",
     delimiter: "Разделитель",
+    decimalSeparator: "Десятичный разделитель",
     encoding: "Кодировка",
     encodingAuto: "Автоопределение",
     encodingUtf8: "UTF-8",
