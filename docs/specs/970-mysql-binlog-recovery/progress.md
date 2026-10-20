@@ -331,3 +331,32 @@ process hosting and preview uncertainty, not the validated inverse SQL engine.
 
 No commit, push, PR, extra issue writeback, release, user-DB connection or automatic
 SQL execution. Original checkout/unrelated changes remain preserved.
+
+## PR #12880 CI follow-up (2026-10-20)
+
+- Initial delivery: `fbbae1d2f61f95fe2e70bbe570b7fd2a6de1b824` was pushed to
+  `fork/codex/issue-12838-binlog` and opened as PR #12880. The preceding
+  no-push statement describes the pre-delivery checkpoint, not current status.
+- CI run `39399502677`: `fast-checks` rejected the missing `dbx-binlog` Rust
+  group entry. `rust` and `agents` were consequent gate failures, not compiler
+  errors. Register the crate in `application`, update the planner fixture's
+  desktop dependency, and test binlog-specific routing and Windows selection.
+- I18n run `39399502584`: the translation provider returned empty content for
+  Thai after processing earlier languages. Add explicit Spanish, Italian,
+  Japanese, Korean, Brazilian Portuguese, Russian and Thai messages locally;
+  preserve safety warnings and placeholders. No workflow checks are disabled.
+  The autofill dry run against `origin/main` now needs no translations or API.
+- Regression evidence: missing locale exports were RED (7 failed, 3 passed),
+  then all 10 locale exports passed key/placeholder parity. Planner routing was
+  RED before registration, then all 113 planner/gate tests passed. Local Cargo
+  is Homebrew 1.95, not rustup: a temporary `/tmp` adapter strips only `+stable`
+  and delegates to real Cargo for the actual workspace metadata test. CI still
+  uses its configured Rust 1.97.1; no repository toolchain checks were changed.
+- Grouped Cargo feature coverage passes, including `dbx-binlog/process-host`
+  in the application lane. Architecture contracts (28), binlog UI/client and
+  translation tests (20), whole-frontend formatting, workspace Rust formatting
+  and generated connection-type checks pass. Final i18n regressions pass
+  (19 files / 1,603 tests), including explicit root-locale registration without
+  English fallback masking omissions. Frontend vue-tsc also passes with its
+  command-local 6 GiB heap. Remote rerun remains a separate
+  delivery gate; local checks do not establish an all-green PR.
