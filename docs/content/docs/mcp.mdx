@@ -205,6 +205,26 @@ Resource discovery and reads reuse the corresponding Tool allowlist plus connect
 
 This is a bounded snapshot, not a continuous consumer or a topic-wide text search. Other message queue types are rejected.
 
+## Redis Value Decoding
+
+`dbx_execute_redis_command` accepts an optional `decode` argument:
+
+```json
+{
+  "connection_name": "Local Redis",
+  "db": 0,
+  "command": "GET java-cache-key",
+  "decode": "auto"
+}
+```
+
+- Omit `decode` to keep the existing command result unchanged.
+- `auto` and `java-serialized` currently support Java Object Serialization only. Auto detection requires the Java stream header and a successful complete parse. Msgpack, Pickle, PHP Serialize and Protobuf are not supported by this MCP option yet.
+- Successfully decoded string values become `{ "codec": "java-serialized", "value": ... }` inside the existing command/safety result. Array and map replies are decoded per value, so replies can contain both decoded and original values.
+- The JSON follows the desktop viewer's `$class`, `$id`, `$ref`, `$extends`, annotation and collection conventions. Java `long` values remain decimal strings to avoid precision loss.
+- Unrecognized, malformed, unsupported or over-budget streams retain their original escaped text. Omit `decode` to retrieve raw text for a successfully decoded value; successful output does not repeat the binary dump.
+- Parsing is data-only: no Java runtime or class loading is required. Each value is limited to 1 MiB of input, bounded nesting/nodes, and bounded output work. A shared 16 MiB work budget also limits decoding across the entire command reply; values above these limits fall back to raw text. Existing connection scope, read-only and production protection still apply.
+
 ## Batch SQL Execution
 
 `dbx_execute_batch` runs a SQL script containing multiple statements in a single call. In auto-commit mode (the default) it returns one result per statement, so callers see exactly which statement failed, how many rows each affected, and what each returned. With `use_transaction` and a script containing multiple statements it returns a single merged transaction outcome instead.

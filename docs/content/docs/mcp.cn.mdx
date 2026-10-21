@@ -205,6 +205,26 @@ Resource 的发现和读取会复用对应 Tool 的白名单，以及连接、�
 
 该工具读取有限条消息快照，不提供持续订阅或全 Topic 文本搜索。其他消息队列类型会被拒绝。
 
+## Redis 值解码
+
+`dbx_execute_redis_command` 支持可选的 `decode` 参数：
+
+```json
+{
+  "connection_name": "Local Redis",
+  "db": 0,
+  "command": "GET java-cache-key",
+  "decode": "auto"
+}
+```
+
+- 不传 `decode` 时，命令结果保持原样。
+- `auto` 和 `java-serialized` 目前仅支持 Java Object Serialization。自动识别要求匹配 Java 流头并完整解析成功；此 MCP 参数暂不支持 Msgpack、Pickle、PHP Serialize 和 Protobuf。
+- 成功解码的字符串值在原有命令和安全等级输出中显示为 `{ "codec": "java-serialized", "value": ... }`。数组和 Map 回复按值解码，同一结果可同时包含已解码值和原始值。
+- JSON 沿用桌面端的 `$class`、`$id`、`$ref`、`$extends`、注解和集合结构。Java `long` 保持十进制字符串，避免精度丢失。
+- 未识别、损坏、不支持或超限的数据仍返回原始转义文本。成功结果不重复输出二进制流；需要查看原始值时，省略 `decode` 再次读取。
+- 解析只读取数据，无需 Java 运行时，也不会加载类。每个值最多处理 1 MiB 输入，并限制嵌套、节点数量和输出工作量；整次命令回复还共享 16 MiB 工作预算，超限时回退原文。原有连接范围、只读和生产保护仍然生效。
+
 ## 批量 SQL 执行
 
 `dbx_execute_batch` 在单次调用内执行包含多条语句的 SQL 脚本。默认（自动提交）模式下按语句返回结果，因此调用方可以清楚看到哪条失败、每条影响多少行、各自返回什么；使用 `use_transaction` 且脚本包含多条语句时，只返回一个合并的事务结果。

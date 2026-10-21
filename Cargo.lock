@@ -2576,6 +2576,7 @@ dependencies = [
  "axum",
  "chrono",
  "dbx-core",
+ "dbx-formats",
  "dirs",
  "env_logger",
  "futures",
