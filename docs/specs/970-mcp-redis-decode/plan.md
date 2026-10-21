@@ -110,3 +110,14 @@ Rust builds use reduced development/test debug output and disabled incremental
 compilation for local disk usage. The no-default-features build has existing
 unused/dead-code warnings in unchanged `dbx-core` files. Full desktop/workspace
 builds are outside this focused validation scope.
+
+## CI standalone lock validation
+
+The standalone DuckDB `Cargo.lock` includes `dbx-formats`' direct base64, flate2
+and num-bigint dependency edges; package versions remain unchanged. Verified the
+same `CI_PLAN` and `.github/scripts/ci-lockfiles.mjs` used by run 39536127203:
+root workspace, DuckDB and TDengine locked metadata all pass. CI planner/gate
+checks pass 112/112, architecture checks pass 28/28, generated connection types
+and grouped Rust feature coverage pass. The local planner tests use a temporary
+`+stable` argument adapter for the installed stable Homebrew Cargo because this
+host has no rustup proxy; Cargo metadata itself still runs against real manifests.
