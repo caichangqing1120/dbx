@@ -67,6 +67,21 @@ async fn real_redis_values_decode_over_the_mcp_transport() {
             .collect::<Vec<_>>();
         set_value(port, fixture["name"].as_str().unwrap(), &bytes);
     }
+    let mut extra: Vec<Value> =
+        serde_json::from_str(include_str!("../../dbx-formats/tests/fixtures/redis_codecs.json")).unwrap();
+    let compressed: Vec<Value> =
+        serde_json::from_str(include_str!("../../dbx-formats/tests/fixtures/redis_compression.json")).unwrap();
+    extra.extend(compressed);
+    for fixture in &extra {
+        let bytes = fixture["hex"]
+            .as_str()
+            .unwrap()
+            .as_bytes()
+            .chunks_exact(2)
+            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+            .collect::<Vec<_>>();
+        set_value(port, fixture["name"].as_str().unwrap(), &bytes);
+    }
     set_value(port, "plain", b"plain text");
     set_value(port, "broken", &[0xac, 0xed, 0, 5]);
     let large_text = "x".repeat(21_000);
@@ -105,6 +120,41 @@ async fn real_redis_values_decode_over_the_mcp_transport() {
         let decoded: Value = serde_json::from_str(output.split_once("\n\n").unwrap().1).unwrap();
         assert_eq!(decoded, json!({"codec":"java-serialized", "value":fixture["expected"]}), "{key}");
     }
+    for fixture in &extra {
+        let key = fixture["name"].as_str().unwrap();
+        let mut request = json!({"connection_id":"redis-codec","command":format!("GET {key}")});
+        let mut expected = json!({"value":fixture["expected"]});
+        if let Some(codec) = fixture["codec"].as_str() {
+            request["decode"] = json!(codec);
+            expected["codec"] = json!(codec);
+        }
+        if let Some(compression) = fixture["compression"].as_str() {
+            request["decompress"] = json!(compression);
+            expected["compression"] = json!(compression);
+        }
+        let result = client
+            .peer()
+            .call_tool(
+                CallToolRequestParams::new("dbx_execute_redis_command")
+                    .with_arguments(request.as_object().unwrap().clone()),
+            )
+            .await
+            .unwrap();
+        assert_ne!(result.is_error, Some(true), "{result:?}");
+        let output = result.content[0].as_text().unwrap().text.split_once("\n\n").unwrap().1;
+        assert_eq!(serde_json::from_str::<Value>(output).unwrap(), expected, "{key}");
+    }
+    let result=client.peer().call_tool(CallToolRequestParams::new("dbx_execute_redis_command").with_arguments(json!({"connection_id":"redis-codec","command":"MGET msgpack-map php-map pickle-protocol-4 gzip-msgpack-map plain broken missing","decode":"auto"}).as_object().unwrap().clone())).await.unwrap();
+    assert_ne!(result.is_error, Some(true), "{result:?}");
+    let values: Value =
+        serde_json::from_str(result.content[0].as_text().unwrap().text.split_once("\n\n").unwrap().1).unwrap();
+    for (index, codec) in [(0, "msgpack"), (1, "php-serialize"), (2, "pickle"), (3, "msgpack")] {
+        assert_eq!(values[index]["codec"], json!(codec));
+    }
+    assert_eq!(values[3]["compression"], json!("gzip"));
+    assert_eq!(values[4], json!("plain text"));
+    assert_eq!(values[5], json!(r"\xac\xed\x00\x05"));
+    assert_eq!(values[6], Value::Null);
     for (command, decode, expected) in [
         ("GET string", None, json!(r"\xac\xed\x00\x05t\x00\x08sometext")),
         (

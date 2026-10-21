@@ -23,6 +23,7 @@ name = "dbx-mcp"
 path = "src/main.rs"
 
 [dependencies]
+base64 = "0.22"
 dbx-formats = { path = "../dbx-formats" }
 async-trait = "0.1"
 futures = "0.3"

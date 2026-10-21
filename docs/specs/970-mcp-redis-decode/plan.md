@@ -1,84 +1,112 @@
-# MCP Redis Java decoding implementation plan
+# MCP Redis decoding implementation plan
 
-> Execute inline using `superpowers:executing-plans`, with test-first changes.
+> Execute using the foundation workflow, test-first codec changes, independent
+> parser tasks, integration validation and read-only code review.
 
-**Goal:** Let MCP clients read Java serialized Redis values without interpreting binary dumps.
+**Goal:** Give MCP clients structured Redis values for Java Object Serialization,
+MessagePack, Pickle, PHP Serialize and schema-less Protobuf, including compressed
+values, while preserving default command output and original-text fallback.
 
-**Spec:** https://github.com/t8y2/dbx/issues/12922 (the issue explicitly permits an initial Java-only implementation).
+**Spec:** https://github.com/t8y2/dbx/issues/12922. The user subsequently requested
+all remaining codecs and the desktop's gzip/zlib/raw-DEFLATE decompression in the
+same PR, extending the initially delivered Java-only scope.
 
-**Architecture:** Add a bounded, data-only Java serialization parser in `dbx-formats`. MCP reverses the driver's lossless Redis display escaping and applies the parser only when `decode` is supplied. Successful values become `{ "codec": "java-serialized", "value": ... }`; unsuccessful values remain byte-for-byte unchanged. Default output and all existing authorization paths remain unchanged.
+**Architecture:** Data-only Rust parsers and streaming decompression live in
+`dbx-formats`. MCP reverses the Redis driver's lossless byte display, unwraps a
+selected/recognized compression format, and applies the selected/detected codec.
+Each string leaf receives one bounded processing allowance and all leaves share
+a command allowance. Existing execution authorization runs before this output
+processing. Shared fixtures compare Rust and desktop TypeScript conventions.
 
-**Tech stack:** Rust, serde_json, rmcp/schemars; existing TypeScript desktop codec as the compatibility reference.
+**Tech stack:** Rust, serde_json, base64, num-bigint, flate2/zlib-rs,
+rmcp/schemars, Vitest, Python/Java-generated fixture bytes.
 
-## Constraints
+## API and acceptance
 
-- `dbx_execute_redis_command` gains optional `decode: "auto" | "java-serialized"`.
-- Auto detection requires `AC ED 00 05` and a completely parsed stream.
-- Preserve `$class`, `$id`, `$ref`, `$extends`, Java long strings, block data and common collection post-processing conventions used by the desktop.
-- Do not instantiate Java classes or execute deserialization hooks.
-- Bound input bytes, recursive depth, nodes and normalized output work (including a shared per-reply budget); malformed/unsupported streams fall back to the original display.
-- Msgpack, Pickle, PHP Serialize, Protobuf and replacing the desktop codec are outside this initial PR.
-
-## Task 1: Shared Java serialization decoder
-
-Files: `crates/dbx-formats/src/redis_java.rs`, `crates/dbx-formats/src/lib.rs`, `crates/dbx-formats/tests/redis_java.rs`, shared fixture JSON.
-
-- [x] Add real Java ObjectOutputStream fixtures and literal expected JSON, including references, inheritance, maps, arrays, Unicode, enums and longs.
-- [x] Run `cargo test -p dbx-formats --test redis_java`; observe missing decoder failure.
-- [x] Implement `pub fn decode_java_serialized(bytes: &[u8]) -> Option<serde_json::Value>` with a handle arena and separate normalization pass so cycles stay references.
-- [x] Verify malformed/truncated streams, invalid references, negative/oversized lengths and deep nesting all return `None`.
-- [x] Run the decoder and existing formats tests.
-
-## Task 2: MCP opt-in output integration
-
-Files: `crates/dbx-mcp/src/redis_decode.rs`, `crates/dbx-mcp/src/server.rs`, `crates/dbx-mcp/src/lib.rs`, `crates/dbx-mcp/Cargo.toml`, `Cargo.lock`.
-
-- [x] Add tests for default request compatibility, schema enum, escaped backslashes, nested command replies and raw fallback.
-- [x] Add `RedisDecode` enum and `decode` optional request field with a concrete string schema (no nullable type union).
-- [x] Decode individual string leaves after execution, then use existing command/safety output formatting. Never revisit newly decoded JSON as Redis display text.
-- [x] Run MCP library and protocol tests, including existing access-policy tests.
-- [x] Run the ignored live test against an ephemeral Redis 8.6.3 process, including all shared fixtures, mixed MGET, default raw output and a 21 KB value.
-
-## Task 3: Compatibility, documentation and delivery
-
-Files: `packages/app-tests/redisJavaCodec.test.ts`, shared fixture JSON, `crates/dbx-mcp/tests/live_redis_decode.rs`, English/Chinese MCP documentation.
-
-- [x] Run the desktop parser against the same fixture JSON to prove matching normalized output.
-- [x] Document opt-in arguments, success envelope, original-text fallback and Java-only scope.
-- [x] Run targeted formatting and `git diff --check`; review bounded parsing, unchanged defaults and permission checks.
-Delivery after verification: commit, push to `caichangqing1120/dbx:codex/issue-12922-redis-decode`, and open a PR against `t8y2/dbx:main`, linking #12922 and reporting actual checks.
-
-## Acceptance examples
+- `decode`: optional `auto`, `java-serialized`, `msgpack`, `pickle`,
+  `php-serialize`, `protobuf`.
+- `decompress`: optional `auto`, `gzip`, `zlib`, `deflate`; usable independently.
+- Omit both arguments for unchanged output. Valid results contain `value` and
+  the applicable `codec`/`compression` metadata. Invalid or unsupported input
+  retains the original display. Compound replies process string leaves only.
+- Auto decoding recognizes complete Java streams, Pickle protocol 2-5 headers,
+  PHP serialization and MessagePack containers. MessagePack scalars and legacy
+  Pickle protocol 0/1 require explicit selection; Protobuf is never detected.
+- Decode requests can automatically unwrap checksum-verified gzip/zlib. Raw
+  DEFLATE requires explicit selection. Gzip concatenated members are supported;
+  trailing garbage/truncation/checksum failures retain the original value.
+- Decompression alone returns UTF-8 or binary `{ "$bytes": "<base64>" }`.
+- Unsafe integers remain exact decimal strings; Java longs always remain strings.
+  Java reference/inheritance metadata and ordinary desktop codec output are
+  preserved. Protobuf fields are numeric, varints unsigned, fixed32/64 raw hex;
+  nested/text/bytes are inferred without .proto-specific type guesses.
 
 ```json
-{"connection_id":"redis","command":"GET cache","decode":"auto"}
+{"connection_id":"redis","command":"GET cache","decode":"msgpack","decompress":"gzip"}
 ```
 
-A stream `aced0005740008736f6d6574657874` produces
-`{ "codec": "java-serialized", "value": "sometext" }`. Without `decode`, its
-original display remains `\xac\xed\x00\x05t\x00\x08sometext`. A stream with only
-`aced0005` remains raw even when decoding is requested.
+Example result:
+`{"codec":"msgpack","compression":"gzip","value":{"task":"add","value":3}}`.
 
-The parser and MCP integration share remaining work using
-`decode_java_serialized_with_budget(bytes: &[u8], remaining: &mut usize)`.
-Each input is limited to 1 MiB, 32,768 nodes, depth 64, and 4 MiB of work;
-the command reply shares 16 MiB of work including display unescaping. Failed
-attempts debit the shared budget. Long field-type references are charged before
-copying, and incomplete/cyclic descriptors and unrepresentable UTF-16 surrogate
-values return raw fallback.
+## Safety constraints
 
-## Self-review
+- 1 MiB original input and decompressed output per value; depth 64; 32,768 nodes.
+- 4 MiB work across each full value pipeline; 16 MiB across the command reply.
+  Failed parsing and heuristic attempts consume budget. Charge allocations and
+  escaping before extending buffers; stop inflate while it produces output.
+- No Java/Python/PHP class loading, constructors, global functions or callbacks
+  execute. Pickle callables and object classes remain inert tagged metadata.
+- Unsupported constructs fall back, including MessagePack extensions/timestamps,
+  PHP references/custom serialization/nonfinite doubles, Pickle persistent IDs,
+  extension registry entries, out-of-band buffers and unsupported timezone data.
+- Preserve original connection/database scope, read-only and production checks.
+- Keep all work on the existing isolated branch and update PR #12956 only.
 
-The three tasks cover opt-in decoding, structured Java values, default compatibility, raw fallback and reuse in a shared Rust crate. No UI behavior or external database mutation is required. Tests compare production parser output with independent Java fixtures and the existing desktop parser.
+## Tasks
 
+- [x] Implement bounded Java arena parsing and normalization with real Java
+  fixtures, cycles, superclass metadata, annotations, collections and malformed
+  descriptor/UTF-16/resource regression tests.
+- [x] Add `DecodeBudget` shared helpers and independently implement MessagePack,
+  PHP, Pickle and Protobuf with focused RED/GREEN tests. Preserve container kinds,
+  dictionary overwrite/reference timing, BOM behavior, calendar/arity validation
+  and budgeted composite-key serialization.
+- [x] Implement gzip/zlib/raw-DEFLATE with incremental output limits, checksums,
+  complete input, concatenated gzip and bomb/truncation/trailing-input tests.
+- [x] Integrate MCP codec/compression options with concrete optional string
+  schemas, conservative auto detection, default/fallback tests and aggregate
+  compressed/uncompressed reply budget tests.
+- [x] Add 25 shared Rust/desktop codec fixtures, 18 additional real Python Pickle
+  fixtures and 24 compression cases. Extend live Redis/MCP coverage to 63
+  fixture GETs, mixed MGET, raw fallback/default and a 21 KB Java value.
+- [x] Update English/Chinese MCP docs, including supported modes and fallbacks.
+- [x] Complete independent read-only review and address all reported findings.
+- [x] Complete Cargo/MCP/protocol/live Redis validation, strict Clippy, targeted
+  formatting and final evidence.
 
-## Verified results
+Delivery: append the verified changes to `codex/issue-12922-redis-decode`, push to
+`caichangqing1120/dbx`, and update the existing PR #12956 against `t8y2/dbx:main`.
 
-- `cargo test -p dbx-formats --locked --offline`: 115 library tests and 7 decoder integration tests passed.
-- `RUST_MIN_STACK=8388608 cargo test -p dbx-mcp --no-default-features --features sqlite-bundled --lib --test protocol --test live_redis_decode --locked --offline`: 205 library tests and 14 protocol tests passed; the opt-in live test was ignored by this default invocation.
-- `RUST_MIN_STACK=8388608 cargo test -p dbx-mcp --no-default-features --features sqlite-bundled --test live_redis_decode --locked --offline -- --ignored --nocapture`: 1 real Redis/MCP transport test passed; the task-owned Redis process was stopped.
-- `pnpm exec vitest run packages/app-tests/redisJavaCodec.test.ts packages/app-tests/redisValuePresentation.test.ts apps/desktop/src/lib/redis/codec/__tests__`: 82 tests across 8 files passed.
-- `cargo fmt -p dbx-formats -p dbx-mcp -- --check`, targeted `oxfmt --check`, and `git diff --check` passed.
-- Independent read-only review approved the final decoder/integration after resource-bound and malformed-stream findings were addressed.
+## Validation commands
 
-Rust builds used disabled development/test debug info and incremental compilation to reduce local build output. The no-default-features build emits existing unused/dead-code warnings from unchanged `dbx-core` files. The full desktop/workspace build was not run.
+```sh
+cargo test -p dbx-formats --locked --offline
+RUST_MIN_STACK=8388608 cargo test -p dbx-mcp --no-default-features --features sqlite-bundled --lib --test protocol --test live_redis_decode --locked --offline -- --include-ignored
+pnpm exec vitest run packages/app-tests/redisCodecParity.test.ts packages/app-tests/redisJavaCodec.test.ts packages/app-tests/redisValuePresentation.test.ts apps/desktop/src/lib/redis/codec/__tests__
+cargo fmt -p dbx-formats -p dbx-mcp -- --check
+```
+
+Final results: 161 formats library tests + 1 shared codec integration suite + 7
+Java integration tests passed; 212 MCP library tests, 14 protocol tests and the
+real Redis/MCP transport test passed; 107 desktop tests in 9 files passed. Both
+`dbx-formats` and `dbx-mcp` passed Clippy with `--all-targets --no-deps -- -D warnings`
+(the MCP command uses the same no-default-features/sqlite-bundled configuration).
+Formatting and whitespace checks passed. The 24 frozen source/fixture/manifest
+input hashes still matched after validation. The test-owned Redis process exited.
+Independent review approved the implementation after replaying all reported
+Pickle failures, 18 Python fixtures and 30 calendar/time round trips.
+
+Rust builds use reduced development/test debug output and disabled incremental
+compilation for local disk usage. The no-default-features build has existing
+unused/dead-code warnings in unchanged `dbx-core` files. Full desktop/workspace
+builds are outside this focused validation scope.

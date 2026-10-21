@@ -258,12 +258,7 @@ pub struct RemoveConnectionRequest {
     pub connection_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub enum RedisDecode {
-    Auto,
-    JavaSerialized,
-}
+pub use crate::redis_decode::{RedisDecode, RedisDecompress};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ExecuteRedisCommandRequest {
@@ -275,10 +270,15 @@ pub struct ExecuteRedisCommandRequest {
     #[schemars(description = "Redis command to execute, for example GET mykey or INFO")]
     pub command: String,
     #[schemars(
-        description = "Optional value decoding: auto or java-serialized. Currently supports Java Object Serialization only; unrecognized, malformed or over-budget values retain their original text. Omit for unchanged raw output."
+        description = "Optional value codec: auto, java-serialized, msgpack, pickle, php-serialize, protobuf. Auto detects Java, framed Pickle, PHP and MessagePack containers, and can decompress gzip/zlib. Protobuf requires explicit selection. Malformed, unsupported or over-budget values retain original text."
     )]
     #[schemars(extend("type" = "string"))]
     pub decode: Option<RedisDecode>,
+    #[schemars(
+        description = "Optional decompression: auto (gzip/zlib), gzip, zlib, deflate. Raw deflate requires explicit selection. Can be used alone or before decode; corrupt/oversized data retains original text."
+    )]
+    #[schemars(extend("type" = "string"))]
+    pub decompress: Option<RedisDecompress>,
 }
 
 #[derive(Debug, Default, serde::Serialize, Deserialize, schemars::JsonSchema)]
@@ -2486,7 +2486,7 @@ impl DbxMcpServer {
 
     #[tool(
         name = "dbx_execute_redis_command",
-        description = "Execute a Redis command on a Redis connection. Use the db argument to select a logical database instead of sending SELECT. Use SCAN rather than KEYS when enumerating keys. Set decode to auto or java-serialized to decode Java serialized values into JSON; omit decode for raw output.",
+        description = "Execute a Redis command on a Redis connection. Use the db argument to select a logical database instead of sending SELECT. Use SCAN rather than KEYS when enumerating keys. Set decode to auto, java-serialized, msgpack, pickle, php-serialize or protobuf for structured JSON. Set decompress to auto, gzip, zlib or deflate to decompress values. Protobuf and raw deflate require explicit selection. Omit both options for raw output.",
         annotations(read_only_hint = false, destructive_hint = true, open_world_hint = false)
     )]
     async fn execute_redis_command(
@@ -2571,8 +2571,9 @@ impl DbxMcpServer {
             .await
         {
             Ok(mut result) => {
-                if request.decode.is_some() {
-                    result.value = crate::redis_decode::decode_redis_result(&result.value);
+                if request.decode.is_some() || request.decompress.is_some() {
+                    result.value =
+                        crate::redis_decode::decode_redis_result(&result.value, request.decode, request.decompress);
                 }
                 text(format_redis_result(&result))
             }
@@ -6991,7 +6992,7 @@ mod tests {
             ("dbx_execute_and_show", &["database"]),
             ("dbx_add_connection", &["port", "database", "driver_profile"]),
             ("dbx_remove_connection", &["connection_id", "connection_name"]),
-            ("dbx_execute_redis_command", &["db", "decode"]),
+            ("dbx_execute_redis_command", &["db", "decode", "decompress"]),
             ("dbx_get_schema_context", &["database", "schema", "max_tables"]),
         ];
         #[cfg(feature = "mq-admin")]
@@ -7247,11 +7248,27 @@ mod tests {
     }
 
     #[test]
-    fn redis_decode_rejects_unimplemented_codecs() {
-        for codec in ["pickle", "msgpack", "unknown", ""] {
+    fn redis_decode_rejects_unknown_codecs() {
+        for codec in ["unknown", "", "execute-python"] {
             assert!(serde_json::from_value::<ExecuteRedisCommandRequest>(json!({"command":"GET key","decode":codec}))
                 .is_err());
         }
+    }
+
+    #[test]
+    fn redis_request_accepts_all_codec_and_compression_modes() {
+        for codec in ["auto", "java-serialized", "msgpack", "pickle", "php-serialize", "protobuf"] {
+            for algorithm in ["auto", "gzip", "zlib", "deflate"] {
+                let request: ExecuteRedisCommandRequest =
+                    serde_json::from_value(json!({"command":"GET key", "decode":codec, "decompress":algorithm}))
+                        .unwrap();
+                assert!(request.decode.is_some() && request.decompress.is_some());
+            }
+        }
+        assert!(serde_json::from_value::<ExecuteRedisCommandRequest>(
+            json!({"command":"GET key", "decompress":"unknown"})
+        )
+        .is_err());
     }
 
     #[tokio::test]
@@ -7262,8 +7279,10 @@ mod tests {
             ..Default::default()
         });
         let server = DbxMcpServer::with_runtime_options(backend.clone(), McpScope::default(), false);
-        let request =
-            serde_json::from_value(json!({"connection_id":"redis","command":"SET key value","decode":"auto"})).unwrap();
+        let request = serde_json::from_value(
+            json!({"connection_id":"redis","command":"SET key value","decode":"auto","decompress":"gzip"}),
+        )
+        .unwrap();
         let result = server.execute_redis_command(Parameters(request)).await;
         assert!(result_text(&result).contains("MCP_READ_ONLY"), "{}", result_text(&result));
         assert!(backend.recorded_arguments.lock().unwrap().is_empty());
@@ -7290,6 +7309,7 @@ mod tests {
                 db: Some(8),
                 command: "SELECT 8".to_string(),
                 decode: None,
+                decompress: None,
             }))
             .await;
 
