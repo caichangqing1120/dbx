@@ -2,6 +2,8 @@
 
 Issue: https://github.com/t8y2/dbx/issues/13265
 
+Pull request: https://github.com/t8y2/dbx/pull/13294 (submitted, not merged).
+
 Base: `0297c5ecf9d727b18e918175d1bcc2f8aa08f08f` (upstream main).
 
 ## Results

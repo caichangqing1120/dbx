@@ -56,7 +56,9 @@
 
 - [x] Run formatting checks, TypeScript checking, complete MySQL crate tests, and frontend suite; record exact outcomes and any environment limitations.
 - [x] Request a fresh whole-branch code review; address important findings with RED/GREEN tests.
-- [ ] Verify issue ownership, fork destination, upstream main base, diff scope, and clean status. Push a codex/ branch to caichangqing1120/dbx and create/attach a PR against t8y2/dbx main. Do not merge, deploy, or close the issue.
+- [x] Verify issue ownership, fork destination, upstream main base, diff scope, and clean status. Push a codex/ branch to caichangqing1120/dbx and create/attach a PR against t8y2/dbx main. Do not merge, deploy, or close the issue.
+
+Submitted: https://github.com/t8y2/dbx/pull/13294 (head `caichangqing1120:codex/fix-13265-mysql-tls-diagnostics`, base `t8y2:main`). Remote CI is separate from the local checks in `verification.md`.
 
 ## Self-review
 
