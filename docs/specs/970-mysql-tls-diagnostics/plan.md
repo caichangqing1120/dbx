@@ -32,11 +32,11 @@
 
 **Interfaces:** Retain public `connect` and `connect_with_ca_cert` signatures, `mysql_error_should_retry_without_ssl(&str) -> bool`, and `ssl_fallback_url(&str) -> Option<String>`.
 
-- [ ] Add failing tests for the exact reported classifier input and wire-protocol tests through `connect` for Preferred fallback failure/success and strict modes; test the final legacy-EOF retry result.
-- [ ] Run `cargo test -p dbx-driver-mysql --lib --locked mysql_tls_`; expect regressions to fail for missing fallback/error preservation.
-- [ ] Recognize only the exact rustls incompatibility variant; store the initial error when fallback starts, assign the legacy-EOF result rather than returning early, and combine errors at the end.
-- [ ] Run `cargo test -p dbx-driver-mysql --lib --locked`; expect all non-ignored driver tests to pass.
-- [ ] Commit the driver change and regression tests.
+- [x] Add failing tests for the exact reported classifier input and wire-protocol tests through `connect` for Preferred fallback failure/success and strict modes; test the final legacy-EOF retry result.
+- [x] Run `cargo test -p dbx-driver-mysql --lib --locked mysql_tls_`; expect regressions to fail for missing fallback/error preservation.
+- [x] Recognize only the exact rustls incompatibility variant; store the initial error when fallback starts, assign the legacy-EOF result rather than returning early, and combine errors at the end.
+- [x] Run `cargo test -p dbx-driver-mysql --lib --locked`; expect all non-ignored driver tests to pass.
+- [x] Commit the driver change and regression tests.
 
 ### Task 2: Actionable localized hints
 
@@ -44,21 +44,23 @@
 
 **Interfaces:** Keep `appendConnectionErrorHints(config, message, t): string`. Add `connection.mysqlUnsupportedTlsVersionHint` and `connection.mysqlDisabledTlsAccessDeniedHint`.
 
-- [ ] Add failing table-driven tests for exact legacy-version errors, combined fallback errors, Disabled aliases with 1045/28000, ordinary authentication errors, empty passwords, non-MySQL errors, and duplicate hint prevention.
-- [ ] Run `pnpm exec vitest run apps/desktop/src/lib/connection/__tests__/connectionErrorHints.spec.ts`; expect the new hint cases to fail.
-- [ ] Add specific hint routing and translations; preserve existing missing-password/certificate priority and native error details.
-- [ ] Run the focused tests, the i18n suite, and `pnpm test`; expect green, or document unrelated failures individually.
-- [ ] Commit localized hints and tests.
+- [x] Add failing table-driven tests for exact legacy-version errors, combined fallback errors, Disabled aliases with 1045/28000, ordinary authentication errors, empty passwords, non-MySQL errors, and duplicate hint prevention.
+- [x] Run `pnpm exec vitest run apps/desktop/src/lib/connection/__tests__/connectionErrorHints.spec.ts`; expect the new hint cases to fail.
+- [x] Add specific hint routing and translations; preserve existing missing-password/certificate priority and native error details.
+- [x] Run the focused tests, the i18n suite, and `pnpm test`; expect green, or document unrelated failures individually.
+- [x] Commit localized hints and tests.
 
 ### Task 3: Verification and submission
 
 **Files:** This plan and Spec; no new production interfaces.
 
-- [ ] Run formatting checks, TypeScript checking, complete MySQL crate tests, and frontend suite; record exact outcomes and any environment limitations.
-- [ ] Request a fresh whole-branch code review; address important findings with RED/GREEN tests.
+- [x] Run formatting checks, TypeScript checking, complete MySQL crate tests, and frontend suite; record exact outcomes and any environment limitations.
+- [x] Request a fresh whole-branch code review; address important findings with RED/GREEN tests.
 - [ ] Verify issue ownership, fork destination, upstream main base, diff scope, and clean status. Push a codex/ branch to caichangqing1120/dbx and create/attach a PR against t8y2/dbx main. Do not merge, deploy, or close the issue.
 
 ## Self-review
+
+Verification evidence: `verification.md`. One independent-review P2 was fixed with RED/GREEN coverage.
 
 All acceptance requirements map to Tasks 1/2; Task 3 covers delivery. Existing
 mode guards remain authoritative. Tests must include the production connection
