@@ -101,7 +101,8 @@ export function appendConnectionErrorHints(config: ConnectionConfig | undefined,
   }
   if (mysqlTlsMode(config) === "disabled") {
     // 1045 does not distinguish bad credentials from an account requiring SSL.
-    if (config.password && /\b1045\b/.test(message) && /\b28000\b/.test(message) && /access denied for user/i.test(message)) {
+    const usedPassword = Boolean(config.password) || /using password:\s*yes\b/i.test(message);
+    if (usedPassword && /\b1045\b/.test(message) && /\b28000\b/.test(message) && /access denied for user/i.test(message)) {
       return appendHint(message, t("connection.mysqlDisabledTlsAccessDeniedHint"));
     }
     return message;

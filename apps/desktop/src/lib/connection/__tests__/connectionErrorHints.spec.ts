@@ -79,10 +79,19 @@ describe("appendConnectionErrorHints", () => {
   it("keeps missing-password priority and ignores unrelated errors", () => {
     const noPassword = accessDenied.replace("password: YES", "password: NO");
     expect(appendConnectionErrorHints(mysqlConfig("ssl-mode=disabled"), noPassword, t)).toBe("No database password was sent.");
-    expect(appendConnectionErrorHints(mysqlConfig("ssl-mode=disabled"), accessDenied, t)).toBe(accessDenied);
+    const unknownPassword = accessDenied.replace(" (using password: YES)", "");
+    expect(appendConnectionErrorHints(mysqlConfig("ssl-mode=disabled"), unknownPassword, t)).toBe(unknownPassword);
     expect(appendConnectionErrorHints({ ...mysqlConfig("ssl-mode=disabled"), password: "secret" }, "ERROR 1044 (42000): Access denied for user root", t)).toBe("ERROR 1044 (42000): Access denied for user root");
     expect(appendConnectionErrorHints(jdbcConfig(), legacyTlsError, t)).toBe(legacyTlsError);
     expect(appendConnectionErrorHints(undefined, legacyTlsError, t)).toBe(legacyTlsError);
+  });
+
+  it("uses server-reported password use when the saved config omits a transient password", () => {
+    const config = mysqlConfig("ssl-mode=disabled");
+    const message = appendConnectionErrorHints(config, accessDenied, t);
+
+    expect(message).toContain(accessDenied);
+    expect(message).toContain(t("connection.mysqlDisabledTlsAccessDeniedHint"));
   });
 
   it("recognizes an encrypted SQLite file that was first opened without a password", () => {
